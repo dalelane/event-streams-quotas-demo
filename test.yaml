@@ -1,0 +1,178 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: performance-consumer-properties
+  namespace: eventstreams
+data:
+  consumer.properties: |-
+    bootstrap.servers=es-ibm-es-kp-bootstrap.eventstreams.svc:9093
+    group.id=kafka-performance-test
+    security.protocol=SASL_SSL
+    sasl.mechanism=SCRAM-SHA-512
+    sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required username="quotas-user" password="GvTX0OpyG1Af";
+    ssl.protocol=TLSv1.2
+    ssl.truststore.location=/certs/cluster/ca.p12
+    ssl.truststore.password=t54AzO1VxTKK
+    ssl.truststore.type=PKCS12
+
+
+---
+
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: performance-producer-properties
+  namespace: eventstreams
+data:
+  producer.properties: |-
+    bootstrap.servers=es-ibm-es-kp-bootstrap.eventstreams.svc:9093
+    compression.type=none
+    acks=all
+    security.protocol=SASL_SSL
+    sasl.mechanism=SCRAM-SHA-512
+    sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required username="quotas-user" password="GvTX0OpyG1Af";
+    ssl.protocol=TLSv1.2
+    ssl.truststore.location=/certs/cluster/ca.p12
+    ssl.truststore.password=t54AzO1VxTKK
+    ssl.truststore.type=PKCS12
+
+
+---
+
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: performance-consumer
+  namespace: eventstreams
+spec:
+  template:
+    metadata:
+      labels:
+        app: performance-consumer
+    spec:
+      imagePullSecrets:
+        - name: ibm-entitlement-key
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: performance-consumer
+      containers:
+        - name: kafka-perf
+          image: cp.icr.io/cp/ibm-eventstreams-kafka@sha256:5fdb2edc8f5f6f182d202387bd8cee34c3a365bfc891623166bd0ab58c9c4d2a
+          command:
+            - "/opt/kafka/bin/kafka-consumer-perf-test.sh"
+            - "--topic"
+            - "QUOTAS.DEMO"
+            - "--messages"
+            - "1000000"
+            - "--group"
+            - "kafka-performance-test"
+            - "--consumer.config"
+            - "/config/consumer.properties"
+            - "--timeout"
+            - "120000"
+            - "--bootstrap-server"
+            - "es-ibm-es-kp-bootstrap.eventstreams.svc:9093"
+          volumeMounts:
+            - mountPath: /certs/cluster
+              name: cluster-ca
+              readOnly: true
+            - mountPath: /config
+              name: consumer-properties
+              readOnly: true
+      volumes:
+        - name: cluster-ca
+          secret:
+            items:
+              - key: ca.crt
+                path: ca.crt
+              - key: ca.p12
+                path: ca.p12
+              - key: ca.password
+                path: ca.password
+            secretName: es-cluster-ca-cert
+        - name: consumer-properties
+          configMap:
+            name: performance-consumer-properties
+      restartPolicy: Never
+      resources:
+        limits:
+          cpu: "2"
+          memory: 8096Mi
+  backoffLimit: 1
+  completions: 6
+  parallelism: 6
+
+
+---
+
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: performance-producer
+  namespace: eventstreams
+spec:
+  template:
+    metadata:
+      labels:
+        app: performance-producer
+    spec:
+      imagePullSecrets:
+        - name: ibm-entitlement-key
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: performance-producer
+      containers:
+        - name: kafka-perf
+          image: cp.icr.io/cp/ibm-eventstreams-kafka@sha256:5fdb2edc8f5f6f182d202387bd8cee34c3a365bfc891623166bd0ab58c9c4d2a
+          command:
+            - "/opt/kafka/bin/kafka-producer-perf-test.sh"
+            - "--topic"
+            - "QUOTAS.DEMO"
+            - "--num-records"
+            - "1000000"
+            - "--record-size"
+            - "128"
+            - "--throughput"
+            - "-1"
+            - "--producer.config"
+            - "/config/producer.properties"
+          volumeMounts:
+            - mountPath: /certs/cluster
+              name: cluster-ca
+              readOnly: true
+            - mountPath: /config
+              name: producer-properties
+              readOnly: true
+      volumes:
+        - name: cluster-ca
+          secret:
+            items:
+            - key: ca.crt
+              path: ca.crt
+            - key: ca.p12
+              path: ca.p12
+            - key: ca.password
+              path: ca.password
+            secretName: es-cluster-ca-cert
+        - name: producer-properties
+          configMap:
+            name: performance-producer-properties
+      restartPolicy: Never
+      resources:
+        limits:
+          cpu: "2"
+          memory: 8096Mi
+  backoffLimit: 1
+  completions: 6
+  parallelism: 6

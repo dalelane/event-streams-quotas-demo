@@ -1,0 +1,14 @@
+apiVersion: eventstreams.ibm.com/v1beta2
+kind: KafkaTopic
+metadata:
+  name: performance-topic
+  namespace: eventstreams
+  labels:
+    eventstreams.ibm.com/cluster: es
+spec:
+  config:
+    min.insync.replicas: '2'
+    retention.ms: '604800000'
+  partitions: 6
+  replicas: 3
+  topicName: QUOTAS.DEMO
